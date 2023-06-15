@@ -44,14 +44,6 @@ check_azure_login() {
   fi
 }
 
-# Fonction pour vérifier si un groupe de ressources existe déjà
-check_existing_resource_group() {
-  echo "Vérification de l'existence du groupe de ressources..."
-  if az group show --name "$1" >/dev/null 2>&1; then
-    handle_error "Le groupe de ressources $1 existe déjà."
-  fi
-}
-
 # Fonction pour vérifier si un Key Vault existe déjà
 check_existing_key_vault() {
   echo "Vérification de l'existence du Key Vault..."
@@ -126,12 +118,15 @@ show_download_message() {
   echo "Téléchargement des fichiers en cours..."
 }
 
-# Fonction pour télécharger un fichier à partir d'Azure Key Vault
+# # Fonction pour télécharger un fichier à partir d'Azure Key Vault
 download_keyvault_file() {
   local file_name=$1
   local output_file=$2
 
-  az keyvault secret download --vault-name "$key_vault_name" --name "$file_name" --file "$output_file" >/dev/null 2>&1 || handle_error "Erreur lors du téléchargement du fichier $file_name."
+  az keyvault secret download --vault-name "$key_vault_name" --name "$file_name" --file "$output_file" >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    handle_error "Erreur lors du téléchargement du fichier $file_name."
+  fi
 }
 
 # Fonction pour créer un répertoire de téléchargement s'il n'existe pas
@@ -152,7 +147,6 @@ rollback() {
 # Fonction principale pour exécuter les étapes du script
 run_script() {
   check_azure_login
-  check_existing_resource_group "$resource_group_name"
   check_existing_key_vault "$key_vault_name" "$resource_group_name"
 
   create_key_vault "$resource_group_name" "$key_vault_name"
@@ -160,22 +154,23 @@ run_script() {
   create_ssl_certificate "$key_vault_name" "$certificate_name"
   create_secret "$key_vault_name" "$secret_name"
 
-  # Déterminer le répertoire de téléchargement basé sur le nom d'utilisateur exécutant le script
-  download_dir="/home/$LOGNAME/telechargements"
+  download_dir="/home/groot/telechargements"
 
-  # Afficher un message prévenant du téléchargement des fichiers
   show_download_message
-
-  # Créer le répertoire de téléchargement s'il n'existe pas
   create_download_directory "$download_dir"
 
-  # Télécharger les fichiers dans le répertoire de téléchargement
-  download_keyvault_file "$private_key_name" "$download_dir/$private_key_name.key"
-  download_keyvault_file "$certificate_name" "$download_dir/$certificate_name.crt"
-  download_keyvault_file "$secret_name" "$download_dir/$secret_name.txt"
+  download_keyvault_file "$private_key_name" "$download_dir/private_key.pem"
+  download_keyvault_file "$certificate_name" "$download_dir/certificate.pem"
 
   echo "Le script s'est exécuté avec succès ! Les fichiers ont été téléchargés dans le répertoire $download_dir."
-}
+   # Afficher le contenu de la clé privée
+#   echo "Contenu de la clé privée :"
+#   az keyvault secret show --vault-name "$key_vault_name" --name "$private_key_name" --query "value" -o tsv
+
+#   # Afficher le contenu du certificat SSL
+#   echo "Contenu du certificat SSL :"
+#   az keyvault secret show --vault-name "$key_vault_name" --name "$certificate_name" --query "value" -o tsv
+# }
 
 # Exécution du script principal
 run_script
